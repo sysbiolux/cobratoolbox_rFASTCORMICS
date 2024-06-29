@@ -1,4 +1,4 @@
-function V = LP10(K, P, v, LPproblem, epsilon)
+function V = LP10(K, P, v, LPproblem, epsilon, NonPen)
 % Finds a flux vector that maintains the activity of any active irreversible
 % core reaction (K) yet minimises the activity of any non-core reaction (P).
 % Implementation of LP-10 for input sets K, P (see FASTCORE paper)
@@ -12,12 +12,15 @@ function V = LP10(K, P, v, LPproblem, epsilon)
 %             LCSB / LSRU, University of Luxembourg
 %   2019/04/08: Agnieszka Wegrzyn - updated the function to work with models with coupling constraints
 % 2020 Ronan Fleming - adaptive scaling prototype
-
+% 2024 Maria Pires Pacheco and Thomas Sauter addition of an unpenalized set
+% NonPen
+if nargin <6
+    NonPen=[];
+end
 V = [];
 if isempty(P) || isempty(K)
     return;
 end
-[m2,n2] = size(LPproblem.A);
 
 %force active irreversible core reactions to be active
 %important to set lower bound to min(v(K))*10 not min(v(K)) as the latter is too close to the threshold
@@ -31,7 +34,13 @@ nk = numel(K);
 
 % objective
 c = [zeros(n2,1); ones(np,1)];
-
+if exist('NonPen','var')
+    notPenalized=find(ismember(P,NonPen));
+    
+    if ~isempty(notPenalized)
+        c(n2+notPenalized)=0; % line required for the unpenalized category of rFASTCORMICS
+    end
+end
 % S*v = b and C *v<= d if present
 Aeq = [LPproblem.A, sparse(m2,np)]; %changed the size of sparse() to match the size of LPproblem.A
 beq = LPproblem.b;
@@ -72,6 +81,13 @@ if solution.stat~=1
     
     % objective
     f = [zeros(n2,1); ones(np,1)];
+     if exist('NonPen','var')
+            notPenalized=find(ismember(P,NonPen));
+
+        if ~isempty(notPenalized)
+            f(n2+notPenalized)=0; % line required for the unpenalized category of rFASTCORMICS
+        end
+    end
     
     % S*v = b and C *v<= d if present
     Aeq = [LPproblem.A, sparse(m2,np)]; %changed the size of sparse() to match the size of LPproblem.A

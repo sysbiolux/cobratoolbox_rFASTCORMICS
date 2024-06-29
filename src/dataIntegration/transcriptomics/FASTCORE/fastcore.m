@@ -1,4 +1,4 @@
-function [tissueModel,coreRxnBool,coreMetBool,coreCtrsBool] = fastcore(model, coreRxnInd, epsilon, printLevel)
+function [tissueModel,coreRxnBool,coreMetBool,coreCtrsBool] = fastcore(model, coreRxnInd, epsilon, printLevel,NonPen)
 % Use the FASTCORE algorithm ('Vlassis et al, 2014') to extract a context
 % specific model. FASTCORE algorithm defines one set of core
 % reactions that is guaranteed to be active in the extracted model and find
@@ -23,13 +23,14 @@ function [tissueModel,coreRxnBool,coreMetBool,coreCtrsBool] = fastcore(model, co
 %   epsilon:             smallest flux value that is considered nonzero
 %                        (default getCobraSolverParams('LP', 'feasTol')*100)
 %   printLevel:          0 = silent, 1 = summary, 2 = debug (default - 0)
+%   NonPen               indexes of unpenalized reactions
 %
 % OUTPUT:
 %
 %   tissueModel:         extracted model
 %
 %   coreRxnBool:         n x 1 boolean vector indicating core reactions
-% 
+%
 % 'Vlassis, Pacheco, Sauter (2014). Fast reconstruction of compact
 % context-specific metbolic network models. PLoS Comput. Biol. 10,
 % e1003424.'
@@ -39,6 +40,9 @@ function [tissueModel,coreRxnBool,coreMetBool,coreCtrsBool] = fastcore(model, co
 %       - Ronan Fleming, commenting of code and inputs/outputs
 %       - Anne Richelle, code adaptation to fit with createTissueSpecificModel
 
+if nargin< 5 || ~exist('NonPen','var')
+    NonPen=[];
+end
 if nargin < 4 || ~exist('printLevel','var')
     printLevel = 0;
 end
@@ -67,7 +71,7 @@ LPproblem.lb(Ir) = -tmp;
 
 %Find irreversible reactions
 irrevRxns = find(model.lb>=0);
-    
+
 A = [];
 flipped = false;
 singleton = false;
@@ -86,8 +90,11 @@ P = setdiff(nbRxns, coreRxnInd);
 
 % Find the minimum of set reactions from P that need to be included to
 % support the irreversible core set of reactions
-[Supp, basis] = findSparseMode(J, P, singleton, model, LPproblem, epsilon);
-
+if ~isempty(NonPen)
+    [Supp, basis] = findSparseMode(J, P, singleton, model, LPproblem, epsilon,[], NonPen);
+else
+    [Supp, basis] = findSparseMode(J, P, singleton, model, LPproblem, epsilon);
+end
 if ~isempty(setdiff(J, Supp))
     warning('fastcore.m Error: Global network is not flux consistent, ignoring the following irreversible core reactions:\n');
     model.rxns(setdiff(J, Supp))
@@ -113,7 +120,12 @@ while ~isempty(J)
     P = setdiff(P, A);
     
     %reuse the basis from the previous solve if it exists
-    [Supp, basis] = findSparseMode(J, P, singleton, model, LPproblem, epsilon, basis);
+    if ~isempty(NonPen)
+        [Supp, basis] = findSparseMode(J, P, singleton, model, LPproblem, epsilon,  basis, NonPen);
+    else
+        [Supp, basis] = findSparseMode(J, P, singleton, model, LPproblem, epsilon,  basis);
+    end
+    
     
     A = union(A, Supp);
     if printLevel > 0
@@ -175,7 +187,7 @@ if any(dummyMetBool) || any(dummyRxnBool)
     model = destroyDummyModel(model,dummyMetBool,dummyRxnBool);
     rxnRemoveList = setdiff(rxnRemoveList,dummyRxnList);
 end
-        
+
 %removes any infeasible coupling constraints also
 [tissueModel, metRemoveList, ctrsRemoveList] = removeRxns(model, rxnRemoveList,'metRemoveMethod','exclusive','ctrsRemoveMethod','infeasible');
 
